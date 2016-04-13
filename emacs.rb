@@ -1,53 +1,58 @@
-require "formula"
-
 class Emacs < Formula
+  desc "GNU Emacs text editor"
   homepage "https://www.gnu.org/software/emacs/"
+  url "http://ftpmirror.gnu.org/emacs/emacs-24.5.tar.xz"
+  mirror "https://ftp.gnu.org/gnu/emacs/emacs-24.5.tar.xz"
+  sha256 "dd47d71dd2a526cf6b47cb49af793ec2e26af69a0951cc40e43ae290eacfc34e"
 
   conflicts_with "emacs"
 
-  stable do
-    url "http://ftpmirror.gnu.org/emacs/emacs-24.4.tar.xz"
-    mirror "https://ftp.gnu.org/pub/gnu/emacs/emacs-24.4.tar.xz"
-    sha256 "47e391170db4ca0a3c724530c7050655f6d573a711956b4cd84693c194a9d4fd"
+  bottle do
+    revision 2
+    sha256 "2442a949678d9b3cbe99e9b504917a641de57258d2a40dc85e8a70efae82bb38" => :el_capitan
+    sha256 "751b8b481b30870273243eae77ea08eb2b0b5a2fbcbc62453b7cf7632ac69445" => :yosemite
+    sha256 "3889a7cbda704f604b3a6187c8683ea1e6e4e600e1e7a0b8b59f33533e8f3023" => :mavericks
+  end
 
+  stable do
     depends_on "autoconf" => :build
     depends_on "automake" => :build
 
-    # Fix ns-antialias-text, broken in 24.4, submitted upstream here:
-    # http://lists.gnu.org/archive/html/emacs-devel/2014-10/msg00813.html
-
     patch do
-      url 'https://gist.githubusercontent.com/scotchi/66edaf426d7375c0f061/raw/b7055ba40a7dd9e8f6f5dd6bbe5c305a78bbbc87/emacs-fix-ns-antialias-text-mac-os.patch'
-      sha1 '6215c59c01dc247dfdec7c89ff2fe84ff28eb1c7'
-    end
-
-    # "--japanese" option:
-    # to apply a patch from MacEmacsJP for Japanese input methods
-    patch do
-      url "http://plamo.linet.gr.jp/~matsuki/mac/emacs-24.4-20140417-inline.patch"
-      sha1 "90456a6856c1e3a11ca10a73866ee1aea371aad4"
-    end if build.include? "cocoa" and build.include? "japanese"
+      url "https://gist.githubusercontent.com/takaxp/1d91107b311b63b57529/raw/afcdd809e138a08c45a469e30aed9db0685aef3c/emacs-24.5-inline.patch"
+      sha256 "5ab4cca25ab4d12c802b400a4eb0edcc182bbe97f5d203f7a3e69992be7622db"
+    end if build.include? "with-cocoa" and build.include? "japanese"
   end
 
-  option "cocoa", "Build a Cocoa version of emacs"
-  option "with-x", "Include X11 support"
-  option "use-git-head", "Use Savannah (faster) git mirror for HEAD builds"
-  option "keep-ctags", "Don't remove the ctags executable that emacs provides"
-  option "japanese", "Patch for Japanese input methods"
+  devel do
+    url "http://alpha.gnu.org/gnu/emacs/pretest/emacs-25.0.92.tar.xz"
+    sha256 "c29733959ae2c6a7c1d5f9465b4d06c93977cc1f3905313d992051a16590568e"
+    depends_on "autoconf" => :build
+    depends_on "automake" => :build
+
+    patch do
+      url "https://gist.githubusercontent.com/takaxp/4af1b5707141eff6b67b/raw/13a8a029ee07b62beb7ba67b7d2f433c97a3553a/emacs-25.0.9x-inline.patch"
+      sha256 "7f97fc14f5743a9fc07a344bdab3c94ebc5823e2086164723125ebc89ffbb076"
+    end if build.include? "with-cocoa" and build.include? "japanese"
+  end
 
   head do
-    if build.include? "use-git-head"
-      url "http://git.sv.gnu.org/r/emacs.git"
-    else
-      url "bzr://http://bzr.savannah.gnu.org/r/emacs/trunk"
-    end
-
+    url "https://github.com/emacs-mirror/emacs.git"
     depends_on "autoconf" => :build
     depends_on "automake" => :build
   end
 
+  option "with-cocoa", "Build a Cocoa version of emacs"
+  option "with-ctags", "Don't remove the ctags executable that emacs provides"
+  option "without-libxml2", "Don't build with libxml2 support"
+  option "japanese", "Patch for Japanese input methods"
+
+  deprecated_option "cocoa" => "with-cocoa"
+  deprecated_option "keep-ctags" => "with-ctags"
+  deprecated_option "with-x" => "with-x11"
+
   depends_on "pkg-config" => :build
-  depends_on :x11 if build.with? "x"
+  depends_on :x11 => :optional
   depends_on "d-bus" => :optional
   depends_on "gnutls" => :optional
   depends_on "librsvg" => :optional
@@ -55,52 +60,72 @@ class Emacs < Formula
   depends_on "mailutils" => :optional
   depends_on "glib" => :optional
 
+  # https://github.com/Homebrew/homebrew/issues/37803
+  if build.with? "x11"
+    depends_on "freetype" => :recommended
+    depends_on "fontconfig" => :recommended
+  end
+
   fails_with :llvm do
     build 2334
     cause "Duplicate symbol errors while linking."
   end
 
   def install
-    # HEAD builds blow up when built in parallel as of April 20 2012
-    # FIXME is this still necessary? It's been more than two years, surely any
-    # race conditions would have made it into release by now.
-    ENV.deparallelize unless build.stable?
-
     args = ["--prefix=#{prefix}",
             "--enable-locallisppath=#{HOMEBREW_PREFIX}/share/emacs/site-lisp",
-            "--infodir=#{info}/emacs"]
+            "--infodir=#{info}/emacs",
+           ]
+
     args << "--with-file-notification=gfile" if build.with? "glib"
+
+    if build.with? "libxml2"
+      args << "--with-xml2"
+    else
+      args << "--without-xml2"
+    end
+
     if build.with? "d-bus"
       args << "--with-dbus"
     else
       args << "--without-dbus"
     end
+
     if build.with? "gnutls"
       args << "--with-gnutls"
     else
       args << "--without-gnutls"
     end
+
     args << "--with-rsvg" if build.with? "librsvg"
     args << "--with-imagemagick" if build.with? "imagemagick"
     args << "--without-popmail" if build.with? "mailutils"
 
-    system "./autogen.sh" unless build.stable?
+    system "./autogen.sh" if build.head? || build.devel?
 
-    if build.include? "cocoa"
+    if build.with? "cocoa"
       args << "--with-ns" << "--disable-ns-self-contained"
       system "./configure", *args
       system "make"
       system "make", "install"
+
+      # Remove when 25.1 is released
+      if build.stable?
+        chmod 0644, %w[nextstep/Emacs.app/Contents/PkgInfo
+                       nextstep/Emacs.app/Contents/Resources/Credits.html
+                       nextstep/Emacs.app/Contents/Resources/document.icns
+                       nextstep/Emacs.app/Contents/Resources/Emacs.icns]
+      end
       prefix.install "nextstep/Emacs.app"
 
       # Replace the symlink with one that avoids starting Cocoa.
       (bin/"emacs").unlink # Kill the existing symlink
       (bin/"emacs").write <<-EOS.undent
         #!/bin/bash
-        exec #{prefix}/Emacs.app/Contents/MacOS/Emacs -nw  "$@"
+        exec #{prefix}/Emacs.app/Contents/MacOS/Emacs "$@"
       EOS
     else
-      if build.with? "x"
+      if build.with? "x11"
         # These libs are not specified in xft's .pc. See:
         # https://trac.macports.org/browser/trunk/dports/editors/emacs/Portfile#L74
         # https://github.com/Homebrew/homebrew/issues/8156
@@ -110,6 +135,7 @@ class Emacs < Formula
       else
         args << "--without-x"
       end
+      args << "--without-ns"
 
       system "./configure", *args
       system "make"
@@ -118,14 +144,14 @@ class Emacs < Formula
 
     # Follow MacPorts and don't install ctags from Emacs. This allows Vim
     # and Emacs and ctags to play together without violence.
-    unless build.include? "keep-ctags"
+    if build.without? "ctags"
       (bin/"ctags").unlink
       (man1/"ctags.1.gz").unlink
     end
   end
 
   def caveats
-    if build.include? "cocoa" then <<-EOS.undent
+    if build.with? "cocoa" then <<-EOS.undent
       A command line wrapper for the cocoa app was installed to:
         #{bin}/emacs
       EOS
